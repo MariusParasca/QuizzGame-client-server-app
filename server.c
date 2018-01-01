@@ -13,7 +13,7 @@
 #include <sqlite3.h> 
 
 /* portul folosit */
-#define PORT 2908
+#define PORT 2018
 
 /* codul de eroare returnat de anumite apeluri */
 extern int errno;
@@ -22,6 +22,12 @@ typedef struct thData{
   int idThread; //id-ul thread-ului tinut in evidenta de acest program contorizeaza
   int cl; //descriptorul intors de accept
 }thData;
+
+struct questionAndSize
+{
+  const unsigned char* question;
+  int size;
+};
 
 static void *treat(void *); /* functia executata de fiecare thread ce realizeaza comunicarea cu clientii */
 void raspunde(void *);
@@ -33,6 +39,8 @@ int checkUsernamePassword(char *username, char *password);
 int checkForValidUsername(char* username, char*password);
 void addQuestion();
 void addingQuestion();
+struct questionAndSize getQuestion(int questionID);
+void sendQuestion(void *arg);
 
 int main()
 {
@@ -87,7 +95,7 @@ int main()
     int client;
     pthread_t thread;
     thData * td; //parametru functia executata de thread     
-    int length = sizeof (from);
+    unsigned int length = sizeof (from);
 
     printf ("[server]Asteptam la portul %d...\n",PORT);
     fflush (stdout);
@@ -130,13 +138,26 @@ static void *treat(void * arg)
 
 void raspunde(void *arg)
 {
-  int ok, i=0;
-  struct thData tdL; 
+  thData tdL; 
   tdL= *((struct thData*)arg);
+  int code;
 
-  //finished: login(&tdL);
-  userRegister(&tdL);
-  
+  if (read (tdL.cl, &code, sizeof(code)) <= 0)
+  {
+    printf("[Thread %d]\n",tdL.idThread);
+    perror ("read() error from client.\n");
+  }
+
+  if(code == 1)
+  {
+    login((struct thData*)arg);
+  }
+  else if(code == 2)
+  {
+    userRegister((struct thData*)arg);
+  }
+
+  //sendQuestion((struct thData*) &tdL);
 }
 
 void closeDatabase(sqlite3* db) { sqlite3_close(db); }
@@ -144,6 +165,7 @@ void closeDatabase(sqlite3* db) { sqlite3_close(db); }
 sqlite3* openDatabase()
 {
   sqlite3 *db;
+
   if( (sqlite3_open("quizzGameDataBase.db", &db)) ) 
   {
     fprintf(stderr, "[Database]Can't open database: %s\n", sqlite3_errmsg(db));
@@ -151,6 +173,7 @@ sqlite3* openDatabase()
   } 
   else 
     fprintf(stderr, "[Database]Opened database successfully\n");
+
   return db;
 }
 
@@ -171,74 +194,80 @@ int checkUsernamePassword(char *username, char *password)
   closeDatabase(db);
   if (sqlite3_step(res) == SQLITE_ROW) 
   {
+    sqlite3_finalize(res);
     return 1;
   }
   else
+  {
+    sqlite3_finalize(res);
     return 0;
+  }
 
-  sqlite3_finalize(res);
   return 0;
 }
 
 void login(void * arg)
 {
   thData tdL; 
-  int ok;
+  int ok = 0;
   char username[64], password[64];
   tdL= *((struct thData*)arg);
 
-  if (read (tdL.cl, username,sizeof(username)) <= 0)
+  while(!ok)
   {
-    printf("[Thread %d]\n",tdL.idThread);
-    perror ("read() error from client.\n");
-  }
-  if (read (tdL.cl, password,sizeof(password)) <= 0)
-  {
-    printf("[Thread %d]\n",tdL.idThread);
-    perror ("read() error from client.\n");
+    if (read (tdL.cl, username, sizeof(username)) <= 0)
+    {
+      printf("[Thread %d]\n",tdL.idThread);
+      perror ("read() error from client.\n");
+    }
+    if (read (tdL.cl, password, sizeof(password)) <= 0)
+    {
+      printf("[Thread %d]\n",tdL.idThread);
+      perror ("read() error from client.\n");
+    }
+
+    ok = checkUsernamePassword(username, password);
+
+    if (write (tdL.cl, &ok, sizeof(ok)) <= 0)
+    {
+      printf("[Thread %d] ",tdL.idThread);
+      perror ("[Thread]write() error sending to client.\n");
+    }
   }
 
-  printf ("[Thread %d]Mesajul a fost receptionat...%s %s\n",tdL.idThread, username, password); ///////////
-
-   ok = checkUsernamePassword(username, password);
-
-  if (write (tdL.cl, &ok, sizeof(ok)) <= 0)
-  {
-    printf("[Thread %d] ",tdL.idThread);
-    perror ("[Thread]write() error sending to client.\n");
-  }
-  else
-    printf ("[Thread %d]Mesajul a fost trasmis cu succes.\n",tdL.idThread); ////////
+  printf ("[Thread %d]Log in successfully.\n",tdL.idThread);
 }
 
 void userRegister(void *arg)
 {
   thData tdL; 
-  int ok;
-  char *string;
+  int ok = 0;
   char username[64], password[64];
   tdL= *((struct thData*)arg);
 
-  if (read (tdL.cl, username,sizeof(username)) <= 0)
+  while(!ok)
   {
-    printf("[Thread %d]\n",tdL.idThread);
-    perror ("read() error from client.\n");
-  }
-  if (read (tdL.cl, password,sizeof(password)) <= 0)
-  {
-    printf("[Thread %d]\n",tdL.idThread);
-    perror ("read() error from client.\n");
+    if (read (tdL.cl, username, sizeof(username)) <= 0)
+    {
+      printf("[Thread %d]\n",tdL.idThread);
+      perror ("read() error from client.\n");
+    }
+    if (read (tdL.cl, password, sizeof(password)) <= 0)
+    {
+      printf("[Thread %d]\n",tdL.idThread);
+      perror ("read() error from client.\n");
+    }
+
+    ok = checkForValidUsername(username, password);
+
+    if (write (tdL.cl, &ok, sizeof(ok)) <= 0)
+    {
+      printf("[Thread %d] ",tdL.idThread);
+      perror ("[Thread]write() error sending to client.\n");
+    }
   }
 
-  ok = checkForValidUsername(username, password);
-
-  if (write (tdL.cl, &ok, sizeof(ok)) <= 0)
-  {
-    printf("[Thread %d] ",tdL.idThread);
-    perror ("[Thread]write() error sending to client.\n");
-  }
-  else
-    printf ("[Thread %d]Mesajul a fost trasmis cu succes.\n",tdL.idThread);
+  printf ("[Thread %d]Register successfully.\n",tdL.idThread);
 }
 
 int checkForValidUsername(char* username, char*password)
@@ -249,7 +278,7 @@ int checkForValidUsername(char* username, char*password)
   char sql[1024];
   sprintf(sql, "INSERT INTO users VALUES(NULL, '%s', '%s');", username, password);
   
-  if( sqlite3_exec(db, sql, NULL, 0, &errMsg) != SQLITE_OK )
+  if(( sqlite3_exec(db, sql, NULL, 0, &errMsg) ) != SQLITE_OK)
   {
     fprintf(stderr, "SQL error: %s\n", errMsg);
     sqlite3_free(errMsg);
@@ -320,4 +349,59 @@ void addingQuestion()
     else
       break;
   }
+}
+
+struct questionAndSize getQuestion(int questionID)
+{
+  sqlite3 *db = openDatabase();
+  sqlite3_stmt *res;
+  struct questionAndSize temp;
+  char sql[1024];
+  sprintf(sql, "SELECT question FROM questions WHERE id_question = %d;", questionID);
+
+  if (sqlite3_prepare_v2(db, sql, -1, &res, 0) != SQLITE_OK)
+  {
+    
+    fprintf(stderr, "Failed to fetch data: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    exit(-1);
+  }
+  closeDatabase(db);
+  
+  if (sqlite3_step(res) == SQLITE_ROW) 
+  {
+    temp.question = sqlite3_column_text(res, 0);
+    temp.size = sqlite3_column_bytes(res, 0);
+    sqlite3_finalize(res);
+    return temp;
+  }
+  else
+  {
+    temp.size = 0;
+    sqlite3_finalize(res);
+    return temp;
+  }
+}
+
+void sendQuestion(void *arg)
+{
+  thData tdL; 
+  tdL= *((struct thData*)arg);
+  struct questionAndSize temp = getQuestion(1);
+
+  if(temp.size == 0)
+    exit(0);
+
+  if (write (tdL.cl, &temp.size, sizeof(temp.size)) <= 0)
+  {
+    printf("[Thread %d] ",tdL.idThread);
+    perror ("[Thread]write() error sending to client.\n");
+  }
+
+  if (write (tdL.cl, temp.question, temp.size) <= 0)
+  {
+    printf("[Thread %d] ",tdL.idThread);
+    perror ("[Thread]write() error sending to client.\n");
+  }
+
 }
