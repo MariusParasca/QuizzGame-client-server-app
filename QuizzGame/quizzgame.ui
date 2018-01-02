@@ -24,7 +24,7 @@
      </rect>
     </property>
     <property name="currentIndex">
-     <number>0</number>
+     <number>3</number>
     </property>
     <widget class="QWidget" name="welcome">
      <widget class="QWidget" name="layoutWidget">
@@ -124,7 +124,11 @@
           </widget>
          </item>
          <item>
-          <widget class="QLineEdit" name="lineEdit_password_login"/>
+          <widget class="QLineEdit" name="lineEdit_password_login">
+           <property name="echoMode">
+            <enum>QLineEdit::Password</enum>
+           </property>
+          </widget>
          </item>
         </layout>
        </item>
@@ -188,7 +192,11 @@
           </widget>
          </item>
          <item>
-          <widget class="QLineEdit" name="lineEdit_password_register"/>
+          <widget class="QLineEdit" name="lineEdit_password_register">
+           <property name="echoMode">
+            <enum>QLineEdit::Password</enum>
+           </property>
+          </widget>
          </item>
         </layout>
        </item>
@@ -208,7 +216,74 @@
       </layout>
      </widget>
     </widget>
-    <widget class="QWidget" name="game"/>
+    <widget class="QWidget" name="game">
+     <widget class="QLabel" name="label_question">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>20</y>
+        <width>551</width>
+        <height>81</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Question</string>
+      </property>
+     </widget>
+     <widget class="QPushButton" name="pushButton_check">
+      <property name="geometry">
+       <rect>
+        <x>500</x>
+        <y>260</y>
+        <width>94</width>
+        <height>27</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Check</string>
+      </property>
+     </widget>
+     <widget class="QWidget" name="">
+      <property name="geometry">
+       <rect>
+        <x>30</x>
+        <y>110</y>
+        <width>95</width>
+        <height>120</height>
+       </rect>
+      </property>
+      <layout class="QVBoxLayout" name="verticalLayout_2">
+       <item>
+        <widget class="QRadioButton" name="radioButton_a">
+         <property name="text">
+          <string>Answer a</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QRadioButton" name="radioButton_b">
+         <property name="text">
+          <string>Answer b</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QRadioButton" name="radioButton_c">
+         <property name="text">
+          <string>Answer c</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QRadioButton" name="radioButton_d">
+         <property name="text">
+          <string>Answer d</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </widget>
    </widget>
   </widget>
   <widget class="QMenuBar" name="menuBar">

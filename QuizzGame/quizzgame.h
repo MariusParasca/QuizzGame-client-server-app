@@ -26,8 +26,13 @@ public:
     explicit QuizzGame(QWidget *parent = 0, int status = 0);
     void SetSocketDescriptor(int sd);
     void SendCode(int code);
-    void SendUsernamePassword(QString qusername, QString qpassword, int succesfullyPage,
-                              int errorPage, QString title, QString succesfullyText, QString errorText);
+    void SendUsernamePassword(QString qusername, QString qpassword, int errorPage,
+                              QString title, QString succesfullyText, QString errorText);
+    void GetQuestion();
+    void GetAnswers();
+    void GetAnswer(char subsection);
+    void PrepareGame();
+    void closeEvent (QCloseEvent *event);
     ~QuizzGame();
 
 private slots:
@@ -38,6 +43,8 @@ private slots:
     void on_pushButton_register_clicked();
 
     void on_pushButton_registerWellcome_clicked();
+
+    void on_pushButton_check_clicked();
 
 private:
     Ui::QuizzGame *ui;

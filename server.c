@@ -19,7 +19,7 @@
 extern int errno;
 
 typedef struct thData{
-  int idThread; //id-ul thread-ului tinut in evidenta de acest program contorizeaza
+  pthread_t idThread; //id-ul thread-ului tinut in evidenta de acest program contorizeaza
   int cl; //descriptorul intors de accept
 }thData;
 
@@ -29,18 +29,33 @@ struct questionAndSize
   int size;
 };
 
+struct answersAndSizes 
+{
+  const unsigned char* answerA;
+  const unsigned char* answerB;
+  const unsigned char* answerC;
+  const unsigned char* answerD;
+  int sizeA;
+  int sizeB;
+  int sizeC;
+  int sizeD;
+};
+
 static void *treat(void *); /* functia executata de fiecare thread ce realizeaza comunicarea cu clientii */
-void raspunde(void *);
+void respond(void *);
 void login(void * arg);
 void userRegister(void *arg);
 sqlite3* openDatabase();
-void closeDatabase(sqlite3* db) ;
+void closeDatabase(sqlite3* db);
 int checkUsernamePassword(char *username, char *password);
-int checkForValidUsername(char* username, char*password);
+int checkForValidUsername(char *username, char *password);
 void addQuestion();
 void addingQuestion();
 struct questionAndSize getQuestion(int questionID);
-void sendQuestion(void *arg);
+struct answersAndSizes getAnswers(int questionID);
+void sendQuestion(void *arg, int questionID);
+void sendAnswers(void *arg, int questionID);
+void sendAnswer(void *arg, int size, const unsigned char* answer);
 
 int main()
 {
@@ -52,7 +67,7 @@ int main()
   pthread_t th[100];    //Identificatorii thread-urilor care se vor crea
   int i=0;
 
-  //addingQuestion();
+  addingQuestion();
 
   /* crearea unui socket */
   if ((sd = socket (AF_INET, SOCK_STREAM, 0)) == -1)
@@ -101,23 +116,22 @@ int main()
     fflush (stdout);
 
     //client= malloc(sizeof(int));
-    /* acceptam un client (stare blocanta pina la realizarea conexiunii) */
+    /* acceptam un client (stare blocanta pina la realizarea conexiunii)  */
     if ( (client = accept (sd, (struct sockaddr *) &from, &length)) < 0)
     {
       perror ("[server]Eroare la accept().\n");
       continue;
     }
 
-    /* s-a realizat conexiunea, se astepta mesajul */
+    /// s-a realizat conexiunea, se astepta mesajul 
 
     int idThread; //id-ul threadului
     int cl; //descriptorul intors de accept
 
     td=(struct thData*)malloc(sizeof(struct thData));	
-    td->idThread=i++;
     td->cl=client;
 
-    pthread_create(&thread, NULL, &treat, td);	      
+    pthread_create(&td->idThread, NULL, &treat, td);	     
 
   }//while    
 };
@@ -126,17 +140,17 @@ static void *treat(void * arg)
 {		
   thData tdL; 
   tdL= *((struct thData*)arg);	
-  printf ("[thread]- %d - Asteptam mesajul...\n", tdL.idThread); ///////////
+  printf ("[thread]- %d - Asteptam mesajul...\n", (int) tdL.idThread); ///////////
   fflush (stdout);		 
   pthread_detach(pthread_self());		
-  raspunde((struct thData*)arg);
+  respond((struct thData*)arg);
   /* am terminat cu acest client, inchidem conexiunea */
   close ((intptr_t)arg);
   return(NULL);	
 };
 
 
-void raspunde(void *arg)
+void respond(void *arg)
 {
   thData tdL; 
   tdL= *((struct thData*)arg);
@@ -144,13 +158,15 @@ void raspunde(void *arg)
 
   if (read (tdL.cl, &code, sizeof(code)) <= 0)
   {
-    printf("[Thread %d]\n",tdL.idThread);
+    printf("[Thread %d]\n", (int) tdL.idThread);
     perror ("read() error from client.\n");
   }
 
   if(code == 1)
   {
     login((struct thData*)arg);
+    //sendQuestion((struct thData*)arg);
+    //sendAnswers((struct thData*)arg);
   }
   else if(code == 2)
   {
@@ -217,12 +233,12 @@ void login(void * arg)
   {
     if (read (tdL.cl, username, sizeof(username)) <= 0)
     {
-      printf("[Thread %d]\n",tdL.idThread);
+      printf("[Thread %d]\n", (int) tdL.idThread);
       perror ("read() error from client.\n");
     }
     if (read (tdL.cl, password, sizeof(password)) <= 0)
     {
-      printf("[Thread %d]\n",tdL.idThread);
+      printf("[Thread %d]\n", (int) tdL.idThread);
       perror ("read() error from client.\n");
     }
 
@@ -230,12 +246,12 @@ void login(void * arg)
 
     if (write (tdL.cl, &ok, sizeof(ok)) <= 0)
     {
-      printf("[Thread %d] ",tdL.idThread);
+      printf("[Thread %d] ", (int) tdL.idThread);
       perror ("[Thread]write() error sending to client.\n");
     }
   }
 
-  printf ("[Thread %d]Log in successfully.\n",tdL.idThread);
+  printf ("[Thread %d]Log in successfully.\n", (int) tdL.idThread);
 }
 
 void userRegister(void *arg)
@@ -249,12 +265,12 @@ void userRegister(void *arg)
   {
     if (read (tdL.cl, username, sizeof(username)) <= 0)
     {
-      printf("[Thread %d]\n",tdL.idThread);
+      printf("[Thread %d]\n",(int) tdL.idThread);
       perror ("read() error from client.\n");
     }
     if (read (tdL.cl, password, sizeof(password)) <= 0)
     {
-      printf("[Thread %d]\n",tdL.idThread);
+      printf("[Thread %d]\n", (int) tdL.idThread);
       perror ("read() error from client.\n");
     }
 
@@ -262,15 +278,15 @@ void userRegister(void *arg)
 
     if (write (tdL.cl, &ok, sizeof(ok)) <= 0)
     {
-      printf("[Thread %d] ",tdL.idThread);
+      printf("[Thread %d] ", (int) tdL.idThread);
       perror ("[Thread]write() error sending to client.\n");
     }
   }
 
-  printf ("[Thread %d]Register successfully.\n",tdL.idThread);
+  printf ("[Thread %d]Register successfully.\n", (int) tdL.idThread);
 }
 
-int checkForValidUsername(char* username, char*password)
+int checkForValidUsername(char *username, char *password)
 {
   sqlite3 *db = openDatabase();
   char *errMsg = 0;
@@ -344,6 +360,7 @@ void addingQuestion()
     if(answer == 'y')
     {
       addQuestion();
+      addingQuestion();  
       break;
     }
     else
@@ -383,7 +400,7 @@ struct questionAndSize getQuestion(int questionID)
   }
 }
 
-void sendQuestion(void *arg)
+void sendQuestion(void *arg, int questionID)
 {
   thData tdL; 
   tdL= *((struct thData*)arg);
@@ -394,14 +411,81 @@ void sendQuestion(void *arg)
 
   if (write (tdL.cl, &temp.size, sizeof(temp.size)) <= 0)
   {
-    printf("[Thread %d] ",tdL.idThread);
+    printf("[Thread %d] ", (int) tdL.idThread);
     perror ("[Thread]write() error sending to client.\n");
   }
 
   if (write (tdL.cl, temp.question, temp.size) <= 0)
   {
-    printf("[Thread %d] ",tdL.idThread);
+    printf("[Thread %d] ", (int) tdL.idThread);
+    perror ("[Thread]write() error sending to client.\n");
+  }
+}
+
+struct answersAndSizes getAnswers(int questionID)
+{
+  sqlite3 *db = openDatabase();
+  sqlite3_stmt *res;
+  struct answersAndSizes temp;
+  char sql[1024];
+  sprintf(sql, "SELECT answer_a, answer_b, answer_c, answer_d FROM questions WHERE id_question = %d;", questionID);
+
+  if (sqlite3_prepare_v2(db, sql, -1, &res, 0) != SQLITE_OK)
+  {
+    
+    fprintf(stderr, "Failed to fetch data: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    exit(-1);
+  }
+  closeDatabase(db);
+  
+  if (sqlite3_step(res) == SQLITE_ROW) 
+  {
+    temp.answerA = sqlite3_column_text(res, 0);
+    temp.sizeA = sqlite3_column_bytes(res, 0);
+    temp.answerB = sqlite3_column_text(res, 1);
+    temp.sizeB = sqlite3_column_bytes(res, 1);
+    temp.answerC = sqlite3_column_text(res, 2);
+    temp.sizeC = sqlite3_column_bytes(res, 2);
+    temp.answerD = sqlite3_column_text(res, 3);
+    temp.sizeD = sqlite3_column_bytes(res, 3);
+    return temp;
+  }
+  else
+  {
+    temp.sizeA = 0; temp.sizeB = 0; temp.sizeC = 0; temp.sizeD = 0;
+    sqlite3_finalize(res);
+    return temp;
+  }
+}
+
+void sendAnswer(void *arg, int size, const unsigned char* answer)
+{
+  thData tdL; 
+  tdL= *((struct thData*)arg);
+  
+  if (write (tdL.cl, &size, sizeof(size)) <= 0)
+  {
+    printf("[Thread %d] ", (int) tdL.idThread);
     perror ("[Thread]write() error sending to client.\n");
   }
 
+  if (write (tdL.cl, answer, size) <= 0)
+  {
+    printf("[Thread %d] ", (int) tdL.idThread);
+    perror ("[Thread]write() error sending to client.\n");
+  }
 }
+
+void sendAnswers(void *arg, int questionID)
+{
+  thData tdL; 
+  tdL= *((struct thData*)arg);
+  struct answersAndSizes temp = getAnswers(1);
+
+  sendAnswer((struct thData*)arg, temp.sizeA, temp.answerA);
+  sendAnswer((struct thData*)arg, temp.sizeB, temp.answerB);
+  sendAnswer((struct thData*)arg, temp.sizeC, temp.answerC);
+  sendAnswer((struct thData*)arg, temp.sizeD, temp.answerD);
+}
+
