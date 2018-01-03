@@ -31,7 +31,9 @@ public:
     void GetQuestion();
     void GetAnswers();
     void GetAnswer(char subsection);
+    void SendAnswer(char* answer);
     void PrepareGame();
+    void SetRaddioButtonsToFalse();
     void closeEvent (QCloseEvent *event);
     ~QuizzGame();
 
@@ -46,9 +48,14 @@ private slots:
 
     void on_pushButton_check_clicked();
 
+    void on_pushButton_nextQuestion_clicked();
+
 private:
     Ui::QuizzGame *ui;
     int sd;
+    char *answerA, *answerB, *answerC, *answerD;
+    int ok = 1;
+    int i = 0;
 };
 
 

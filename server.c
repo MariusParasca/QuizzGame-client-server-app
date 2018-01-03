@@ -14,6 +14,8 @@
 
 /* portul folosit */
 #define PORT 2018
+#define QUERY_SIZE 1024
+#define USER_DATA_SIZE 64
 
 /* codul de eroare returnat de anumite apeluri */
 extern int errno;
@@ -56,6 +58,11 @@ struct answersAndSizes getAnswers(int questionID);
 void sendQuestion(void *arg, int questionID);
 void sendAnswers(void *arg, int questionID);
 void sendAnswer(void *arg, int size, const unsigned char* answer);
+int isAnswerCorrect(const unsigned char *answer, int questionID);
+const unsigned char* answerFromClient(void *arg);
+void sendAnswerCorrectness(void *arg, int questionID);
+int getNumberOfQuesitons();
+void runningTheGame(void *arg);
 
 int main()
 {
@@ -165,8 +172,7 @@ void respond(void *arg)
   if(code == 1)
   {
     login((struct thData*)arg);
-    //sendQuestion((struct thData*)arg);
-    //sendAnswers((struct thData*)arg);
+    runningTheGame((struct thData*)arg);
   }
   else if(code == 2)
   {
@@ -187,8 +193,6 @@ sqlite3* openDatabase()
     fprintf(stderr, "[Database]Can't open database: %s\n", sqlite3_errmsg(db));
     exit(0);
   } 
-  else 
-    fprintf(stderr, "[Database]Opened database successfully\n");
 
   return db;
 }
@@ -226,7 +230,7 @@ void login(void * arg)
 {
   thData tdL; 
   int ok = 0;
-  char username[64], password[64];
+  char username[USER_DATA_SIZE], password[USER_DATA_SIZE];
   tdL= *((struct thData*)arg);
 
   while(!ok)
@@ -258,7 +262,7 @@ void userRegister(void *arg)
 {
   thData tdL; 
   int ok = 0;
-  char username[64], password[64];
+  char username[USER_DATA_SIZE], password[USER_DATA_SIZE];
   tdL= *((struct thData*)arg);
 
   while(!ok)
@@ -291,7 +295,7 @@ int checkForValidUsername(char *username, char *password)
   sqlite3 *db = openDatabase();
   char *errMsg = 0;
 
-  char sql[1024];
+  char sql[QUERY_SIZE];
   sprintf(sql, "INSERT INTO users VALUES(NULL, '%s', '%s');", username, password);
   
   if(( sqlite3_exec(db, sql, NULL, 0, &errMsg) ) != SQLITE_OK)
@@ -335,7 +339,7 @@ void addQuestion()
 
   //printf("%s cu punctele: %d\n Raspunsurile: a)%s\n b)%s\n c)%s\n d)%s\n corect: %s\n", question, points, a, b, c, d, correctAnswer);
 
-  char sql[1024];
+  char sql[QUERY_SIZE];
   sprintf(sql, "INSERT INTO questions VALUES(NULL, '%s', %d, '%s', '%s','%s','%s','%s');", question, points, a, b, c, d, correctAnswer);
   
   if( sqlite3_exec(db, sql, NULL, 0, &errMsg) != SQLITE_OK )
@@ -373,7 +377,7 @@ struct questionAndSize getQuestion(int questionID)
   sqlite3 *db = openDatabase();
   sqlite3_stmt *res;
   struct questionAndSize temp;
-  char sql[1024];
+  char sql[QUERY_SIZE];
   sprintf(sql, "SELECT question FROM questions WHERE id_question = %d;", questionID);
 
   if (sqlite3_prepare_v2(db, sql, -1, &res, 0) != SQLITE_OK)
@@ -404,7 +408,7 @@ void sendQuestion(void *arg, int questionID)
 {
   thData tdL; 
   tdL= *((struct thData*)arg);
-  struct questionAndSize temp = getQuestion(1);
+  struct questionAndSize temp = getQuestion(questionID);
 
   if(temp.size == 0)
     exit(0);
@@ -427,7 +431,7 @@ struct answersAndSizes getAnswers(int questionID)
   sqlite3 *db = openDatabase();
   sqlite3_stmt *res;
   struct answersAndSizes temp;
-  char sql[1024];
+  char sql[QUERY_SIZE];
   sprintf(sql, "SELECT answer_a, answer_b, answer_c, answer_d FROM questions WHERE id_question = %d;", questionID);
 
   if (sqlite3_prepare_v2(db, sql, -1, &res, 0) != SQLITE_OK)
@@ -481,7 +485,7 @@ void sendAnswers(void *arg, int questionID)
 {
   thData tdL; 
   tdL= *((struct thData*)arg);
-  struct answersAndSizes temp = getAnswers(1);
+  struct answersAndSizes temp = getAnswers(questionID);
 
   sendAnswer((struct thData*)arg, temp.sizeA, temp.answerA);
   sendAnswer((struct thData*)arg, temp.sizeB, temp.answerB);
@@ -489,3 +493,128 @@ void sendAnswers(void *arg, int questionID)
   sendAnswer((struct thData*)arg, temp.sizeD, temp.answerD);
 }
 
+const unsigned char* answerFromClient(void *arg)
+{
+  thData tdL; 
+  tdL= *((struct thData*)arg);
+  int length;
+
+  if (read (tdL.cl, &length, sizeof(int)) <= 0)
+  {
+    printf("[Thread %d]\n",(int) tdL.idThread);
+    perror ("read() error from client.\n");
+  }
+  
+  unsigned char* answer = malloc(length);
+
+  if (read (tdL.cl, (char *) answer, length) <= 0)
+  {
+    printf("[Thread %d]\n",(int) tdL.idThread);
+    perror ("read() error from client.\n");
+  }
+
+  answer[length] = '\0';
+  return (const unsigned char*) answer;
+}
+
+int isAnswerCorrect(const unsigned char *answer, int questionID)
+{
+  sqlite3 *db = openDatabase();
+  sqlite3_stmt *res;
+  int ok;
+  char sql[QUERY_SIZE];
+  sprintf(sql, "SELECT correct_answer FROM questions WHERE id_question = %d;", questionID);
+
+  if (sqlite3_prepare_v2(db, sql, -1, &res, 0) != SQLITE_OK)
+  {
+    
+    fprintf(stderr, "Failed to fetch data: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    exit(-1);
+  }
+  closeDatabase(db);
+  
+  if (sqlite3_step(res) == SQLITE_ROW) 
+  {
+    if(!strcmp((char*) answer, (char*) sqlite3_column_text(res, 0)))
+    {
+      return 1;
+    }
+    else
+      return 0;
+  }
+  else
+  {
+    sqlite3_finalize(res);
+    return 0;
+  }
+}
+
+void sendAnswerCorrectness(void *arg, int questionID)
+{
+  thData tdL; 
+  tdL= *((struct thData*)arg);
+  int ok = isAnswerCorrect(answerFromClient((struct thData*)arg), questionID);
+  if (write (tdL.cl, &ok, sizeof(int)) <= 0)
+  {
+    printf("[Thread %d] ", (int) tdL.idThread);
+    perror ("[Thread]write() error sending to client.\n");
+  }
+}
+
+
+int getNumberOfQuesitons()
+{
+  sqlite3 *db = openDatabase();
+  sqlite3_stmt *res;
+  int ok;
+  char sql[QUERY_SIZE];
+  sprintf(sql, "SELECT COUNT(id_question) FROM questions");
+
+  if (sqlite3_prepare_v2(db, sql, -1, &res, 0) != SQLITE_OK)
+  {
+    
+    fprintf(stderr, "Failed to fetch data: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    exit(-1);
+  }
+  closeDatabase(db);
+  
+  if (sqlite3_step(res) == SQLITE_ROW) 
+  {
+    return atoi( (const char*) sqlite3_column_text(res, 0));
+  }
+  else
+  {
+    sqlite3_finalize(res);
+    return -1;
+  }
+}
+
+void runningTheGame(void *arg)
+{
+  thData tdL; 
+  tdL= *((struct thData*)arg);
+  int n = getNumberOfQuesitons();
+  int ok = 1;
+  for(int i = 1; i <= n; i++)
+  {
+    if(i > 1)
+    {
+      if (write (tdL.cl, &ok, sizeof(int)) <= 0)
+      {
+        printf("[Thread %d] ", (int) tdL.idThread);
+        perror ("[Thread]write() error sending to client.\n");
+      }
+    }
+    sendQuestion((struct thData*)arg, i);
+    sendAnswers((struct thData*)arg, i);
+    sendAnswerCorrectness((struct thData*)arg, i);
+  }
+  ok = 0;
+  if (write (tdL.cl, &ok, sizeof(int)) <= 0)
+  {
+    printf("[Thread %d] ", (int) tdL.idThread);
+    perror ("[Thread]write() error sending to client.\n");
+  }
+}

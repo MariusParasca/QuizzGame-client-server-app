@@ -24,7 +24,7 @@
      </rect>
     </property>
     <property name="currentIndex">
-     <number>3</number>
+     <number>4</number>
     </property>
     <widget class="QWidget" name="welcome">
      <widget class="QWidget" name="layoutWidget">
@@ -248,8 +248,8 @@
        <rect>
         <x>30</x>
         <y>110</y>
-        <width>95</width>
-        <height>120</height>
+        <width>551</width>
+        <height>121</height>
        </rect>
       </property>
       <layout class="QVBoxLayout" name="verticalLayout_2">
@@ -282,6 +282,21 @@
         </widget>
        </item>
       </layout>
+     </widget>
+    </widget>
+    <widget class="QWidget" name="next">
+     <widget class="QPushButton" name="pushButton_nextQuestion">
+      <property name="geometry">
+       <rect>
+        <x>410</x>
+        <y>230</y>
+        <width>151</width>
+        <height>31</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Next Question</string>
+      </property>
      </widget>
     </widget>
    </widget>

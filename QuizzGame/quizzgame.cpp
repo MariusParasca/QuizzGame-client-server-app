@@ -130,20 +130,46 @@ void QuizzGame::GetAnswer(char subsection)
 
     switch (subsection) {
     case 'a':
+    {
         ui->radioButton_a->setText(answer);
+        answerA = (char *) malloc(strlen(answer));
+        strcpy(answerA, answer);
         break;
+    }
     case 'b':
         ui->radioButton_b->setText(answer);
+        answerB = (char *) malloc(strlen(answer));
+        strcpy(answerB, answer);
         break;
     case 'c':
         ui->radioButton_c->setText(answer);
+        answerC = (char *) malloc(strlen(answer));
+        strcpy(answerC, answer);
         break;
     case 'd':
         ui->radioButton_d->setText(answer);
+        answerD = (char *) malloc(strlen(answer));
+        strcpy(answerD, answer);
         break;
     default:
         ui->statusBar->showMessage("Error! Something went wrong on GetAnswer()!");
         break;
+    }
+}
+
+void QuizzGame::SendAnswer(char* answer)
+{
+    int length = strlen(answer);
+    if (write (sd, &length, sizeof(int)) <= 0)
+    {
+        perror ("[client]write() to server error.\n");
+        exit(errno);
+    }
+
+    if (write (sd, answer, length) <= 0)
+    {
+        perror ("[client]write() to server error.\n");
+        exit(errno);
     }
 }
 
@@ -165,9 +191,74 @@ void QuizzGame::on_pushButton_register_clicked()
     PrepareGame();
 }
 
+void QuizzGame::SetRaddioButtonsToFalse()
+{
+    if(ui->radioButton_a->isChecked())
+    {
+        ui->radioButton_a->setAutoExclusive(false);
+        ui->radioButton_a->setChecked(false);
+        ui->radioButton_a->setAutoExclusive(true);
+    }
+    else if(ui->radioButton_b->isChecked())
+    {
+        ui->radioButton_b->setAutoExclusive(false);
+        ui->radioButton_b->setChecked(false);
+        ui->radioButton_b->setAutoExclusive(true);
+    }
+    else if(ui->radioButton_c->isChecked())
+    {
+        ui->radioButton_c->setAutoExclusive(false);
+        ui->radioButton_c->setChecked(false);
+        ui->radioButton_c->setAutoExclusive(true);
+    }
+    else if(ui->radioButton_d->isChecked())
+    {
+        ui->radioButton_d->setAutoExclusive(false);
+        ui->radioButton_d->setChecked(false);
+        ui->radioButton_d->setAutoExclusive(true);
+    }
+}
+
 void QuizzGame::on_pushButton_check_clicked()
 {
-    PrepareGame();
+    int error = 0;
+
+    if(ui->radioButton_a->isChecked())
+    {
+        SendAnswer(answerA);
+    }
+    else if(ui->radioButton_b->isChecked())
+    {
+        SendAnswer(answerB);
+    }
+    else if(ui->radioButton_c->isChecked())
+    {
+        SendAnswer(answerC);
+    }
+    else if(ui->radioButton_d->isChecked())
+    {
+        SendAnswer(answerD);
+    }
+    else
+    {
+        ui->statusBar->showMessage("No button checked! Try again!", 3000);
+        error = 1;
+    }
+    if(!error)
+    {
+        int ok;
+        if (read (sd, &ok, sizeof(ok)) < 0)
+        {
+            perror ("[client]read() error from server.\n");
+            exit(errno);
+        }
+
+        if(ok)
+            ui->statusBar->showMessage("Correct answer!", 3000);
+        else
+            ui->statusBar->showMessage("Wrong answer!", 3000);
+        ui->stackedWidget->setCurrentIndex(4);
+    }
 }
 
 void QuizzGame::PrepareGame()
@@ -191,3 +282,23 @@ void QuizzGame::closeEvent (QCloseEvent *event)
     }
 }
 
+
+void QuizzGame::on_pushButton_nextQuestion_clicked()
+{
+    int ok;
+    SetRaddioButtonsToFalse();
+    if (read (sd, &ok, sizeof(ok)) < 0)
+    {
+        perror ("[client]read() error from server.\n");
+        exit(errno);
+    }
+
+    if(ok)
+    {
+        GetQuestion();
+        GetAnswers();
+        ui->stackedWidget->setCurrentIndex(3);
+    }
+    else
+        ui->statusBar->showMessage("No more questions!");
+}
