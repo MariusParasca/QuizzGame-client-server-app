@@ -11,6 +11,8 @@
 
 /* codul de eroare returnat de anumite apeluri */
 extern int errno;
+//server addead points to client
+//client blocked on incorrect username or password bug fixeds
 
 /* portul de conectare la server*/
 int port;

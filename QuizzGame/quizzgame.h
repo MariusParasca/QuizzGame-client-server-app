@@ -12,7 +12,8 @@
 #include <stdlib.h>
 #include <netdb.h>
 #include <string.h>
-#include <iostream>
+#include <QTimer>
+#include <QTime>
 
 namespace Ui {
 class QuizzGame;
@@ -26,14 +27,18 @@ public:
     explicit QuizzGame(QWidget *parent = 0, int status = 0);
     void SetSocketDescriptor(int sd);
     void SendCode(int code);
-    void SendUsernamePassword(QString qusername, QString qpassword, int errorPage,
-                              QString title, QString succesfullyText, QString errorText);
+    void SendUsernamePassword(QString qusername, QString qpassword, QString title,
+                              QString succesfullyText, QString errorText);
     void GetQuestion();
     void GetAnswers();
     void GetAnswer(char subsection);
     void SendAnswer(char* answer);
     void PrepareGame();
     void SetRaddioButtonsToFalse();
+    void questionTimer();
+    void nextQuestionTimer();
+    int readInt();
+    void GetNextQuestion();
     void closeEvent (QCloseEvent *event);
     ~QuizzGame();
 
@@ -50,12 +55,16 @@ private slots:
 
     void on_pushButton_nextQuestion_clicked();
 
+    void questionTimerSlot();
+
+    void nextQuestionTimerSlot();
+
 private:
     Ui::QuizzGame *ui;
     int sd;
     char *answerA, *answerB, *answerC, *answerD;
-    int ok = 1;
-    int i = 0;
+    QTimer *questTimer, *nextQuestTimer;
+    QTime *questTime, *nextQuestTime;
 };
 
 

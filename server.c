@@ -16,6 +16,8 @@
 #define PORT 2018
 #define QUERY_SIZE 1024
 #define USER_DATA_SIZE 64
+#define NR_TABLES 1024
+#define MAX_CLIENTS_PER_TABLE 2
 
 /* codul de eroare returnat de anumite apeluri */
 extern int errno;
@@ -25,6 +27,7 @@ typedef struct thData{
   int cl; //descriptorul intors de accept
   char* username;
   int points;
+  int tableNumber;
 }thData;
 
 struct questionAndSize
@@ -44,6 +47,8 @@ struct answersAndSizes
   int sizeC;
   int sizeD;
 };
+
+int numberOfClients[NR_TABLES];
 
 static void *treat(void *); /* functia executata de fiecare thread ce realizeaza comunicarea cu clientii */
 void respond(void *arg);
@@ -115,29 +120,61 @@ int main()
     perror ("[server]Eroare la listen().\n");
     return errno;
   }
+
+  int tables[NR_TABLES] = {0};
   /* servim in mod concurent clientii...folosind thread-uri */
   while (1)
   {
     int client;
+    int index;
     pthread_t thread;
     thData * td; //parametru functia executata de thread     
     unsigned int length = sizeof (from);
 
-    printf ("[server]Port: %d...\n",PORT);
+    printf ("[server] Port: %d...\n",PORT);
     fflush (stdout);
 
     //client= malloc(sizeof(int));
     /* acceptam un client (stare blocanta pina la realizarea conexiunii)  */
-    if ( (client = accept (sd, (struct sockaddr *) &from, &length)) < 0)
+
+    /*for(i = 0; i < NR_TABLES; i++)
     {
-      perror ("[server]Eroare la accept().\n");
-      continue;
+      if(tables[i] < MAX_CLIENTS_PER_TABLE)
+      {
+        index = i;
+        break;
+      }
     }
 
-    td=(struct thData*)malloc(sizeof(struct thData));	
-    td->cl=client;
+    
+    while(numberOfClients[index] < MAX_CLIENTS_PER_TABLE)
+    {
+      if ( (client = accept (sd, (struct sockaddr *) &from, &length)) < 0)
+      {
+        perror ("[server]Eroare la accept().\n");
+        continue;
+      }
 
-    pthread_create(&td->idThread, NULL, &treat, td);	     
+      td=(struct thData*)malloc(sizeof(struct thData)); 
+      td->cl=client;
+      td->tableNumber = index;
+
+      ///////////////
+      pthread_create(&td->idThread, NULL, &treat, td);  
+      tables[index]++;
+    }*/
+
+    if ( (client = accept (sd, (struct sockaddr *) &from, &length)) < 0)
+      {
+        perror ("[server]Eroare la accept().\n");
+        continue;
+      }
+
+    td=(struct thData*)malloc(sizeof(struct thData)); 
+      td->cl=client;
+
+      pthread_create(&td->idThread, NULL, &treat, td);  
+         
 
   }//while    
 };
@@ -607,6 +644,36 @@ int isAnswerCorrect(const unsigned char *answer, int questionID)
   }
 }
 
+int questionsPoints(int questionID)
+{
+  sqlite3 *db = openDatabase();
+  sqlite3_stmt *res;
+  int ok;
+  char sql[QUERY_SIZE];
+  sprintf(sql, "SELECT points FROM questions WHERE id_question = %d;", questionID);
+
+  if (sqlite3_prepare_v2(db, sql, -1, &res, 0) != SQLITE_OK)
+  {
+    
+    fprintf(stderr, "Failed to fetch data: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    exit(-1);
+  }
+  closeDatabase(db);
+  
+  if (sqlite3_step(res) == SQLITE_ROW) 
+  {
+    return atoi((const char*) sqlite3_column_text(res, 0));
+  }
+  else
+  {
+    sqlite3_finalize(res);
+    fprintf(stderr, "questionsPoints: error database");
+    return 0;
+  }
+}
+
+
 void sendAnswerCorrectness(void *arg, int questionID)
 {
   thData *tdL = (struct thData*)arg;
@@ -614,6 +681,9 @@ void sendAnswerCorrectness(void *arg, int questionID)
   answerFromClient(arg, &answer);
   int ok = isAnswerCorrect((const unsigned char*) answer, questionID);
   free(answer);
+
+  if(ok)
+    tdL->points += questionsPoints(questionID);
 
   int sendRtn = send(tdL->cl, &ok, sizeof(ok), MSG_NOSIGNAL);
   checkClientStateForWrite(tdL->idThread, sendRtn, sizeof(ok));
