@@ -23,6 +23,8 @@ extern int errno;
 typedef struct thData{
   pthread_t idThread; //id-ul thread-ului tinut in evidenta de acest program contorizeaza
   int cl; //descriptorul intors de accept
+  char* username;
+  int points;
 }thData;
 
 struct questionAndSize
@@ -44,11 +46,13 @@ struct answersAndSizes
 };
 
 static void *treat(void *); /* functia executata de fiecare thread ce realizeaza comunicarea cu clientii */
-void respond(void *);
-void login(void * arg);
+void respond(void *arg);
+void checkClientStateForRead(pthread_t idThread, int readRtn);
+void addUsernameToStruct(void *arg, char *username);
+void login(void *arg);
 void userRegister(void *arg);
 sqlite3* openDatabase();
-void closeDatabase(sqlite3* db);
+void closeDatabase(sqlite3 *db);
 int checkUsernamePassword(char *username, char *password);
 int checkForValidUsername(char *username, char *password);
 void addQuestion();
@@ -57,9 +61,9 @@ struct questionAndSize getQuestion(int questionID);
 struct answersAndSizes getAnswers(int questionID);
 void sendQuestion(void *arg, int questionID);
 void sendAnswers(void *arg, int questionID);
-void sendAnswer(void *arg, int size, const unsigned char* answer);
+void sendAnswer(void *arg, int size, const unsigned char *answer);
 int isAnswerCorrect(const unsigned char *answer, int questionID);
-const unsigned char* answerFromClient(void *arg);
+void answerFromClient(void *arg, unsigned char **answer);
 void sendAnswerCorrectness(void *arg, int questionID);
 int getNumberOfQuesitons();
 void runningTheGame(void *arg);
@@ -119,7 +123,7 @@ int main()
     thData * td; //parametru functia executata de thread     
     unsigned int length = sizeof (from);
 
-    printf ("[server]Asteptam la portul %d...\n",PORT);
+    printf ("[server]Port: %d...\n",PORT);
     fflush (stdout);
 
     //client= malloc(sizeof(int));
@@ -130,11 +134,6 @@ int main()
       continue;
     }
 
-    /// s-a realizat conexiunea, se astepta mesajul 
-
-    int idThread; //id-ul threadului
-    int cl; //descriptorul intors de accept
-
     td=(struct thData*)malloc(sizeof(struct thData));	
     td->cl=client;
 
@@ -143,43 +142,60 @@ int main()
   }//while    
 };
 
-static void *treat(void * arg)
+static void *treat(void *arg)
 {		
-  thData tdL; 
-  tdL= *((struct thData*)arg);	
-  printf ("[thread]- %d - Asteptam mesajul...\n", (int) tdL.idThread); ///////////
+  thData *tdL = (struct thData*)arg;
+  printf ("[thread]- %d - connected\n", (int) tdL->idThread); ///////////
   fflush (stdout);		 
   pthread_detach(pthread_self());		
-  respond((struct thData*)arg);
+  respond(arg);
   /* am terminat cu acest client, inchidem conexiunea */
   close ((intptr_t)arg);
   return(NULL);	
 };
 
+void checkClientStateForRead(pthread_t idThread, int readRtn)
+{
+  if (readRtn == 0)
+  {
+    printf("[Thread %d] This client exited earlier!\n", (int) idThread);
+    pthread_exit(0);
+  }
+}
+
+void checkClientStateForWrite(pthread_t idThread, int sendRtn, int size)
+{
+  if (sendRtn != size)
+  {
+    printf("[Thread %d] This client exited earlier!\n", (int) idThread);
+    pthread_exit(0);
+  }
+}
 
 void respond(void *arg)
 {
-  thData tdL; 
-  tdL= *((struct thData*)arg);
+  thData *tdL = (struct thData*)arg; 
   int code;
+  int readRtn = read (tdL->cl, &code, sizeof(code));
 
-  if (read (tdL.cl, &code, sizeof(code)) <= 0)
+  checkClientStateForRead(tdL->idThread, readRtn);
+
+  if (readRtn < 0)
   {
-    printf("[Thread %d]\n", (int) tdL.idThread);
-    perror ("read() error from client.\n");
+    printf("[Thread %d]\n", (int) tdL->idThread);
+    perror ("respond: read() - 1 error from client.\n");
   }
 
   if(code == 1)
   {
-    login((struct thData*)arg);
-    runningTheGame((struct thData*)arg);
+    login(arg);
   }
   else if(code == 2)
   {
     userRegister((struct thData*)arg);
   }
 
-  //sendQuestion((struct thData*) &tdL);
+  runningTheGame((struct thData*)arg);
 }
 
 void closeDatabase(sqlite3* db) { sqlite3_close(db); }
@@ -226,68 +242,99 @@ int checkUsernamePassword(char *username, char *password)
   return 0;
 }
 
-void login(void * arg)
+void addUsernameToStruct(void *arg, char *username)
 {
-  thData tdL; 
+  thData *tdL = (struct thData*)arg;
+  int length = strlen(username);
+  tdL->username = malloc(length);
+  strcpy(tdL->username, username);
+  tdL->username[length] = '\0';
+  tdL->points = 0;
+}
+
+void login(void *arg)
+{
+  thData *tdL = (struct thData*)arg; 
   int ok = 0;
   char username[USER_DATA_SIZE], password[USER_DATA_SIZE];
-  tdL= *((struct thData*)arg);
 
   while(!ok)
   {
-    if (read (tdL.cl, username, sizeof(username)) <= 0)
+    int readRtn = read (tdL->cl, username, USER_DATA_SIZE);
+    checkClientStateForRead(tdL->idThread, readRtn);
+
+    if (readRtn <= 0)
     {
-      printf("[Thread %d]\n", (int) tdL.idThread);
-      perror ("read() error from client.\n");
+      printf("[Thread %d]\n", (int) tdL->idThread);
+      perror ("login: read() - 1 error from client.\n");
     }
-    if (read (tdL.cl, password, sizeof(password)) <= 0)
+
+    readRtn = read (tdL->cl, password, USER_DATA_SIZE);
+    checkClientStateForRead(tdL->idThread, readRtn);
+
+    if (readRtn < 0)
     {
-      printf("[Thread %d]\n", (int) tdL.idThread);
-      perror ("read() error from client.\n");
+      printf("[Thread %d]\n", (int) tdL->idThread);
+      perror ("login: read() - 2 error from client.\n");
     }
 
     ok = checkUsernamePassword(username, password);
+    if(ok)
+      addUsernameToStruct(arg, username);
 
-    if (write (tdL.cl, &ok, sizeof(ok)) <= 0)
+    int sendRtn = send(tdL->cl, &ok, sizeof(ok), MSG_NOSIGNAL);
+    checkClientStateForWrite(tdL->idThread, sendRtn, sizeof(ok));
+
+    if (sendRtn < 0)
     {
-      printf("[Thread %d] ", (int) tdL.idThread);
-      perror ("[Thread]write() error sending to client.\n");
+      printf("[Thread %d] ", (int) tdL->idThread);
+      perror ("[Thread]login: write() - 1 error sending to client.\n");
     }
   }
 
-  printf ("[Thread %d]Log in successfully.\n", (int) tdL.idThread);
+  printf ("[Thread %d] %s logged in successfully.\n", (int) tdL->idThread, tdL->username);
 }
 
 void userRegister(void *arg)
 {
-  thData tdL; 
+  thData *tdL = (struct thData*)arg;   
   int ok = 0;
   char username[USER_DATA_SIZE], password[USER_DATA_SIZE];
-  tdL= *((struct thData*)arg);
-
   while(!ok)
   {
-    if (read (tdL.cl, username, sizeof(username)) <= 0)
+    int readRtn = read (tdL->cl, username, USER_DATA_SIZE);
+    checkClientStateForRead(tdL->idThread, readRtn);
+
+    if (readRtn <= 0)
     {
-      printf("[Thread %d]\n",(int) tdL.idThread);
-      perror ("read() error from client.\n");
+      printf("[Thread %d]\n",(int) tdL->idThread);
+      perror ("register: read() - 1 error from client.\n");
     }
-    if (read (tdL.cl, password, sizeof(password)) <= 0)
+
+    readRtn = read (tdL->cl, password, USER_DATA_SIZE);
+    checkClientStateForRead(tdL->idThread, readRtn);
+
+    if (readRtn < 0)
     {
-      printf("[Thread %d]\n", (int) tdL.idThread);
-      perror ("read() error from client.\n");
+      printf("[Thread %d]\n", (int) tdL->idThread);
+      perror ("register: read() - 2 error from client.\n");
     }
 
     ok = checkForValidUsername(username, password);
+    if (ok)
+      addUsernameToStruct((struct thData*)arg, username);
 
-    if (write (tdL.cl, &ok, sizeof(ok)) <= 0)
+    int sendRtn = send(tdL->cl, &ok, sizeof(ok), MSG_NOSIGNAL);
+    checkClientStateForWrite(tdL->idThread, sendRtn, sizeof(ok));
+
+    if (sendRtn < 0)
     {
-      printf("[Thread %d] ", (int) tdL.idThread);
-      perror ("[Thread]write() error sending to client.\n");
+      printf("[Thread %d] ", (int) tdL->idThread);
+      perror ("register write() - 1 error sending to client.\n");
     }
   }
 
-  printf ("[Thread %d]Register successfully.\n", (int) tdL.idThread);
+  printf ("[Thread %d]%s registered successfully.\n", (int) tdL->idThread, tdL->username);
 }
 
 int checkForValidUsername(char *username, char *password)
@@ -406,23 +453,28 @@ struct questionAndSize getQuestion(int questionID)
 
 void sendQuestion(void *arg, int questionID)
 {
-  thData tdL; 
-  tdL= *((struct thData*)arg);
+  thData *tdL = (struct thData*)arg;
   struct questionAndSize temp = getQuestion(questionID);
 
   if(temp.size == 0)
     exit(0);
 
-  if (write (tdL.cl, &temp.size, sizeof(temp.size)) <= 0)
+  int sendRtn = send(tdL->cl, &temp.size, sizeof(temp.size), MSG_NOSIGNAL);
+  checkClientStateForWrite(tdL->idThread, sendRtn, sizeof(temp.size));
+
+  if (sendRtn < 0)
   {
-    printf("[Thread %d] ", (int) tdL.idThread);
-    perror ("[Thread]write() error sending to client.\n");
+    printf("[Thread %d] ", (int) tdL->idThread);
+    perror ("sendQuestion: write() - 1 error sending to client.\n");
   }
 
-  if (write (tdL.cl, temp.question, temp.size) <= 0)
+  sendRtn = send(tdL->cl, temp.question, temp.size, MSG_NOSIGNAL);
+  checkClientStateForWrite(tdL->idThread, sendRtn, temp.size);
+
+  if (sendRtn < 0)
   {
-    printf("[Thread %d] ", (int) tdL.idThread);
-    perror ("[Thread]write() error sending to client.\n");
+    printf("[Thread %d] ", (int) tdL->idThread);
+    perror ("sendQuestion: write() - 2 error sending to client.\n");
   }
 }
 
@@ -465,56 +517,61 @@ struct answersAndSizes getAnswers(int questionID)
 
 void sendAnswer(void *arg, int size, const unsigned char* answer)
 {
-  thData tdL; 
-  tdL= *((struct thData*)arg);
+  thData *tdL = (struct thData*)arg;
+
+  int sendRtn = send(tdL->cl, &size, sizeof(size), MSG_NOSIGNAL);
+  checkClientStateForWrite(tdL->idThread, sendRtn, sizeof(size));
   
-  if (write (tdL.cl, &size, sizeof(size)) <= 0)
+  if (sendRtn < 0)
   {
-    printf("[Thread %d] ", (int) tdL.idThread);
-    perror ("[Thread]write() error sending to client.\n");
+    printf("[Thread %d] ", (int) tdL->idThread);
+    perror ("sendAnswer: write() - 1  error sending to client.\n");
   }
 
-  if (write (tdL.cl, answer, size) <= 0)
+  sendRtn = send(tdL->cl, answer, size, MSG_NOSIGNAL);
+  checkClientStateForWrite(tdL->idThread, sendRtn, size);
+
+  if (sendRtn < 0)
   {
-    printf("[Thread %d] ", (int) tdL.idThread);
-    perror ("[Thread]write() error sending to client.\n");
+    printf("[Thread %d] ", (int) tdL->idThread);
+    perror ("sendAnswer: write() - 2 error sending to client.\n");
   }
 }
 
 void sendAnswers(void *arg, int questionID)
 {
-  thData tdL; 
-  tdL= *((struct thData*)arg);
   struct answersAndSizes temp = getAnswers(questionID);
 
-  sendAnswer((struct thData*)arg, temp.sizeA, temp.answerA);
-  sendAnswer((struct thData*)arg, temp.sizeB, temp.answerB);
-  sendAnswer((struct thData*)arg, temp.sizeC, temp.answerC);
-  sendAnswer((struct thData*)arg, temp.sizeD, temp.answerD);
+  sendAnswer(arg, temp.sizeA, temp.answerA);
+  sendAnswer(arg, temp.sizeB, temp.answerB);
+  sendAnswer(arg, temp.sizeC, temp.answerC);
+  sendAnswer(arg, temp.sizeD, temp.answerD);
 }
 
-const unsigned char* answerFromClient(void *arg)
+void answerFromClient(void *arg, unsigned char **answer)
 {
-  thData tdL; 
-  tdL= *((struct thData*)arg);
+  thData *tdL = (struct thData*)arg;
   int length;
+  int readRtn = read (tdL->cl, &length, sizeof(length));
+  checkClientStateForRead(tdL->idThread, readRtn);
 
-  if (read (tdL.cl, &length, sizeof(int)) <= 0)
+  if (readRtn < 0)
   {
-    printf("[Thread %d]\n",(int) tdL.idThread);
-    perror ("read() error from client.\n");
+    printf("[Thread %d]\n",(int) tdL->idThread);
+    perror ("answerFromClient: read() - 1 error from client.\n");
   }
   
-  unsigned char* answer = malloc(length);
+  *answer = malloc(length);
+  readRtn = read (tdL->cl, *answer, length);
+  checkClientStateForRead(tdL->idThread, readRtn);
 
-  if (read (tdL.cl, (char *) answer, length) <= 0)
+  if (readRtn < 0)
   {
-    printf("[Thread %d]\n",(int) tdL.idThread);
-    perror ("read() error from client.\n");
+    printf("[Thread %d]\n",(int) tdL->idThread);
+    perror ("answerFromClient: read() - 2 error from client.\n");
   }
 
-  answer[length] = '\0';
-  return (const unsigned char*) answer;
+  answer[0][length] ='\0';
 }
 
 int isAnswerCorrect(const unsigned char *answer, int questionID)
@@ -552,13 +609,19 @@ int isAnswerCorrect(const unsigned char *answer, int questionID)
 
 void sendAnswerCorrectness(void *arg, int questionID)
 {
-  thData tdL; 
-  tdL= *((struct thData*)arg);
-  int ok = isAnswerCorrect(answerFromClient((struct thData*)arg), questionID);
-  if (write (tdL.cl, &ok, sizeof(int)) <= 0)
+  thData *tdL = (struct thData*)arg;
+  unsigned char *answer;
+  answerFromClient(arg, &answer);
+  int ok = isAnswerCorrect((const unsigned char*) answer, questionID);
+  free(answer);
+
+  int sendRtn = send(tdL->cl, &ok, sizeof(ok), MSG_NOSIGNAL);
+  checkClientStateForWrite(tdL->idThread, sendRtn, sizeof(ok));
+
+  if (sendRtn < 0)
   {
-    printf("[Thread %d] ", (int) tdL.idThread);
-    perror ("[Thread]write() error sending to client.\n");
+    printf("[Thread %d] ", (int) tdL->idThread);
+    perror ("sendAnswerCorrectness: write() - 1 error sending to client.\n");
   }
 }
 
@@ -593,28 +656,35 @@ int getNumberOfQuesitons()
 
 void runningTheGame(void *arg)
 {
-  thData tdL; 
-  tdL= *((struct thData*)arg);
+  thData *tdL = (struct thData*)arg;
   int n = getNumberOfQuesitons();
   int ok = 1;
+  int sendRtn;
   for(int i = 1; i <= n; i++)
   {
     if(i > 1)
     {
-      if (write (tdL.cl, &ok, sizeof(int)) <= 0)
+      sendRtn = send(tdL->cl, &ok, sizeof(ok), MSG_NOSIGNAL);
+      checkClientStateForWrite(tdL->idThread, sendRtn, sizeof(ok));
+
+      if (sendRtn < 0)
       {
-        printf("[Thread %d] ", (int) tdL.idThread);
-        perror ("[Thread]write() error sending to client.\n");
+        printf("[Thread %d] ", (int) tdL->idThread);
+        perror ("runningTheGame write() - 1 error sending to client.\n");
       }
     }
     sendQuestion((struct thData*)arg, i);
     sendAnswers((struct thData*)arg, i);
     sendAnswerCorrectness((struct thData*)arg, i);
   }
+
   ok = 0;
-  if (write (tdL.cl, &ok, sizeof(int)) <= 0)
+  sendRtn = send(tdL->cl, &ok, sizeof(ok), MSG_NOSIGNAL);
+  checkClientStateForWrite(tdL->idThread, sendRtn, sizeof(ok));
+
+  if (sendRtn < 0)
   {
-    printf("[Thread %d] ", (int) tdL.idThread);
-    perror ("[Thread]write() error sending to client.\n");
+    printf("[Thread %d] ", (int) tdL->idThread);
+    perror ("runningTheGame write() - 2 error sending to client.\n");
   }
 }
