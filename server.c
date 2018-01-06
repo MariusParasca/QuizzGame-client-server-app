@@ -12,27 +12,21 @@
 #include <strings.h>
 #include <sqlite3.h> 
 
-/* portul folosit */
 #define PORT 2018
 #define QUERY_SIZE 1024
 #define USER_DATA_SIZE 64
-#define NR_TABLES 1024
 #define MAX_CLIENTS_PER_TABLE 2
 
-/* codul de eroare returnat de anumite apeluri */
 extern int errno;
 
-int tables[NR_TABLES];
 int indexGlobal;
-
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+int playersConnected;
 
 typedef struct thData{
-  pthread_t idThread; //id-ul thread-ului tinut in evidenta de acest program contorizeaza
-  int cl; //descriptorul intors de accept
+  pthread_t idThread; 
+  int cl; 
   char* username;
   int points;
-  int tableNumber;
 }thData;
 
 struct questionAndSize
@@ -53,20 +47,15 @@ struct answersAndSizes
   int sizeD;
 };
 
-int numberOfClients[NR_TABLES];
-int playersConnected;
-
-
-static void *treat(void *); /* functia executata de fiecare thread ce realizeaza comunicarea cu clientii */
+static void *treat(void *arg); 
 void respond(void *arg);
-void checkClientStateForRead(pthread_t idThread, int readRtn);
-void addUsernameToStruct(void *arg, char *username);
+int checkUsernamePassword(char *username, char *password);
 void login(void *arg);
+int checkForValidUsername(char *username, char *password);
 void userRegister(void *arg);
+void addUsernameToStruct(void *arg, char *username);
 sqlite3* openDatabase();
 void closeDatabase(sqlite3 *db);
-int checkUsernamePassword(char *username, char *password);
-int checkForValidUsername(char *username, char *password);
 void addQuestion();
 void addingQuestion();
 struct questionAndSize getQuestion(int questionID);
@@ -80,106 +69,54 @@ void sendAnswerCorrectness(void *arg, int questionID);
 int getNumberOfQuesitons();
 void runningTheGame(void *arg);
 void checkClientStateForWrite(pthread_t idThread, int sendRtn, int size);
-
+void checkClientStateForRead(pthread_t idThread, int readRtn);
+void sendWinner(thData *tds);
 
 int main()
 {
-  struct sockaddr_in server;	// structura folosita de server
+  struct sockaddr_in server;
   struct sockaddr_in from;	
-  int nr;		//mesajul primit de trimis la client 
-  int sd;		//descriptorul de socket 
-  int pid;
-  pthread_t th[100];    //Identificatorii thread-urilor care se vor crea
-  int i=0;
+  int sd;		
 
-  //addingQuestion();
+  addingQuestion();
 
-  /* crearea unui socket */
   if ((sd = socket (AF_INET, SOCK_STREAM, 0)) == -1)
   {
     perror ("[server]Eroare la socket().\n");
     return errno;
   }
-  /* utilizarea optiunii SO_REUSEADDR */
+ 
   int on=1;
   setsockopt(sd,SOL_SOCKET,SO_REUSEADDR,&on,sizeof(on));
 
-  /* pregatirea structurilor de date */
   bzero (&server, sizeof (server));
   bzero (&from, sizeof (from));
 
-  /* umplem structura folosita de server */
-  /* stabilirea familiei de socket-uri */
   server.sin_family = AF_INET;	
-  /* acceptam orice adresa */
   server.sin_addr.s_addr = htonl (INADDR_ANY);
-  /* utilizam un port utilizator */
   server.sin_port = htons (PORT);
 
-  /* atasam socketul */
   if (bind (sd, (struct sockaddr *) &server, sizeof (struct sockaddr)) == -1)
   {
     perror ("[server]Eroare la bind().\n");
     return errno;
   }
-
-  /* punem serverul sa asculte daca vin clienti sa se conecteze */
+ 
   if (listen (sd, 2) == -1)
   {
     perror ("[server]Eroare la listen().\n");
     return errno;
   }
 
-    /* servim in mod concurent clientii...folosind thread-uri */
-  int size = 3;
   indexGlobal = 0;
-  thData *tds = malloc(3 * sizeof(struct thData));
-  //thData tds[4];
+  thData tds[25];
   while (1)
   {
     int client;
-    pthread_t thread;
-    thData * td; //parametru functia executata de thread     
     unsigned int length = sizeof (from);
 
     printf ("[server] Port: %d...\n",PORT);
     fflush (stdout);
-
-    //client= malloc(sizeof(int));
-    /* acceptam un client (stare blocanta pina la realizarea conexiunii)  */
-  /*
-    for(i = 0; i < NR_TABLES; i++)
-    {
-      if(tables[i] < MAX_CLIENTS_PER_TABLE)
-      {
-        index = i;
-        break;
-      }
-    }
-
-    
-    while(tables[index] < MAX_CLIENTS_PER_TABLE)
-    {
-      if ( (client = accept (sd, (struct sockaddr *) &from, &length)) < 0)
-      {
-        perror ("[server]Eroare la accept().\n");
-        continue;
-      }
-
-      td=(struct thData*)malloc(sizeof(struct thData)); 
-      td->cl=client;
-      td->tableNumber = index;
-      //tables[index]++;
-      ///////////////
-      pthread_create(&td->idThread, NULL, &treat, td); 
-
-    }
-  
-    if(index == size)
-    {
-      tds = realloc(tds, 2 * size * sizeof(struct thData));
-      size = 2 * size;
-    }*/ 
 
     if ( (client = accept (sd, (struct sockaddr *) &from, &length)) < 0)
     {
@@ -187,63 +124,24 @@ int main()
       continue;
     }
 
-    //tds[index++] = *(struct thData*)malloc(sizeof(struct thData)); 
     tds[indexGlobal].cl = client;
 
     pthread_create(&tds[indexGlobal].idThread, NULL, &treat, &tds[indexGlobal]);  
     indexGlobal++;
-    printf("[Inainte de if]Players connected: %d\n", playersConnected);
+
     if(indexGlobal == MAX_CLIENTS_PER_TABLE)
-    {
-      printf("[in if]Players connected: %d\n", playersConnected);
-      thData winnner;
-      winnner.points = 0;
-      for(int i = 0; i < indexGlobal; i++)
-      {
-        pthread_join(tds[i].idThread, NULL);
-        if(tds[i].points >= winnner.points)
-          winnner = tds[i];
-      }
-      for(int i = 0; i < indexGlobal; i++)
-      {
-        int length = strlen(winnner.username);
-
-        int sendRtn = send(tds[i].cl, &length, sizeof(length), MSG_NOSIGNAL);
-        checkClientStateForWrite(tds[i].idThread, sendRtn, sizeof(length));
-
-        if (sendRtn < 0)
-        {
-          printf("[Thread %d] ", (int) tds[i].idThread);
-          perror ("sendQuestion: write() - 1 error sending to client.\n");
-        }
-
-        sendRtn = send(tds[i].cl, winnner.username, length, MSG_NOSIGNAL);
-        checkClientStateForWrite(tds[i].idThread, sendRtn, length);
-
-        if (sendRtn < 0)
-        {
-          printf("[Thread %d] ", (int) tds[i].idThread);
-          perror ("sendQuestion: write() - 2 error sending to client.\n");
-        }
-      }
-      printf("[dupa trimitere castigatori]Players connected: %d\n", playersConnected);
-      printf("Winner: %s", winnner.username);
+    {   
+      sendWinner(tds); 
       indexGlobal = 0;
     }
-        
-
-  }//while    
+  }    
 };
 
 static void *treat(void *arg)
 {		
-  thData *tdL = (struct thData*)arg;
-  
-  printf ("[thread]- %d - connected\n", (int) tdL->idThread); ///////////
-  fflush (stdout);		 
-  //pthread_detach(pthread_self());		
+  thData *tdL = (struct thData*)arg; 
+  printf ("[thread]- %d - connected\n", (int) tdL->idThread); 
   respond(arg);
-  /* am terminat cu acest client, inchidem conexiunea */
   close ((intptr_t)arg);
   return(NULL);	
 };
@@ -277,8 +175,9 @@ void checkForSufficentClients(void * arg)
 {
   thData *tdL = (struct thData*)arg;
   int sendRtn, ok = 0;
-  printf("[infunctie]Players connected: %d\n", playersConnected);
- 
+
+  //printf("[infunctie]Players connected: %d\n", playersConnected);
+  
   while(playersConnected != MAX_CLIENTS_PER_TABLE) ;
 
   ok = 1;
@@ -292,9 +191,9 @@ void respond(void *arg)
   thData *tdL = (struct thData*)arg; 
   int code;
   int readRtn = read (tdL->cl, &code, sizeof(code));
-  //printf("Table: %d", tables[tdL->tableNumber]);
+
   checkClientStateForRead(tdL->idThread, readRtn);
-  //printf("Inainte de login: %d", tables[tdL->tableNumber]);
+
   if (readRtn < 0)
   {
     printf("[Thread %d]\n", (int) tdL->idThread);
@@ -313,21 +212,6 @@ void respond(void *arg)
   playersConnected++; 
   checkForSufficentClients(arg);
   runningTheGame(arg);
-}
-
-void closeDatabase(sqlite3* db) { sqlite3_close(db); }
-
-sqlite3* openDatabase()
-{
-  sqlite3 *db;
-
-  if( (sqlite3_open("quizzGameDataBase.db", &db)) ) 
-  {
-    fprintf(stderr, "[Database]Can't open database: %s\n", sqlite3_errmsg(db));
-    exit(0);
-  } 
-
-  return db;
 }
 
 int checkUsernamePassword(char *username, char *password)
@@ -357,16 +241,6 @@ int checkUsernamePassword(char *username, char *password)
   }
 
   return 0;
-}
-
-void addUsernameToStruct(void *arg, char *username)
-{
-  thData *tdL = (struct thData*)arg;
-  int length = strlen(username);
-  tdL->username = malloc(length);
-  strcpy(tdL->username, username);
-  tdL->username[length] = '\0';
-  tdL->points = 0;
 }
 
 void login(void *arg)
@@ -412,6 +286,30 @@ void login(void *arg)
   printf ("[Thread %d] %s logged in successfully.\n", (int) tdL->idThread, tdL->username);
 }
 
+int checkForValidUsername(char *username, char *password)
+{
+  sqlite3 *db = openDatabase();
+  char *errMsg = 0;
+
+  char sql[QUERY_SIZE];
+  sprintf(sql, "INSERT INTO users VALUES(NULL, '%s', '%s');", username, password);
+  
+  if(( sqlite3_exec(db, sql, NULL, 0, &errMsg) ) != SQLITE_OK)
+  {
+    fprintf(stderr, "SQL error: %s\n", errMsg);
+    sqlite3_free(errMsg);
+    closeDatabase(db);
+    return 0;
+  }
+  else 
+  {
+    closeDatabase(db);
+    return 1;
+  }
+
+  return 0;
+}
+
 void userRegister(void *arg)
 {
   thData *tdL = (struct thData*)arg;   
@@ -454,28 +352,29 @@ void userRegister(void *arg)
   printf ("[Thread %d]%s registered successfully.\n", (int) tdL->idThread, tdL->username);
 }
 
-int checkForValidUsername(char *username, char *password)
+void addUsernameToStruct(void *arg, char *username)
 {
-  sqlite3 *db = openDatabase();
-  char *errMsg = 0;
+  thData *tdL = (struct thData*)arg;
+  int length = strlen(username);
+  tdL->username = malloc(length);
+  strcpy(tdL->username, username);
+  tdL->username[length] = '\0';
+  tdL->points = 0;
+}
 
-  char sql[QUERY_SIZE];
-  sprintf(sql, "INSERT INTO users VALUES(NULL, '%s', '%s');", username, password);
-  
-  if(( sqlite3_exec(db, sql, NULL, 0, &errMsg) ) != SQLITE_OK)
-  {
-    fprintf(stderr, "SQL error: %s\n", errMsg);
-    sqlite3_free(errMsg);
-    closeDatabase(db);
-    return 0;
-  }
-  else 
-  {
-    closeDatabase(db);
-    return 1;
-  }
+void closeDatabase(sqlite3* db) { sqlite3_close(db); }
 
-  return 0;
+sqlite3* openDatabase()
+{
+  sqlite3 *db;
+
+  if( (sqlite3_open("quizzGameDataBase.db", &db)) ) 
+  {
+    fprintf(stderr, "[Database]Can't open database: %s\n", sqlite3_errmsg(db));
+    exit(0);
+  } 
+
+  return db;
 }
 
 void addQuestion()
@@ -837,4 +736,41 @@ void runningTheGame(void *arg)
     printf("[Thread %d] ", (int) tdL->idThread);
     perror ("runningTheGame write() - 2 error sending to client.\n");
   }
+}
+
+void sendWinner(thData *tds)
+{
+  thData winnner;
+  winnner.points = 0;
+
+  for(int i = 0; i < indexGlobal; i++)
+  {
+    pthread_join(tds[i].idThread, NULL);
+    if(tds[i].points >= winnner.points)
+      winnner = tds[i];
+  }
+
+  for(int i = 0; i < indexGlobal; i++)
+  {
+    int length = strlen(winnner.username);
+
+    int sendRtn = send(tds[i].cl, &length, sizeof(length), MSG_NOSIGNAL);
+    checkClientStateForWrite(tds[i].idThread, sendRtn, sizeof(length));
+
+    if (sendRtn < 0)
+    {
+      printf("[Thread %d] ", (int) tds[i].idThread);
+      perror ("sendQuestion: write() - 1 error sending to client.\n");
+    }
+
+    sendRtn = send(tds[i].cl, winnner.username, length, MSG_NOSIGNAL);
+    checkClientStateForWrite(tds[i].idThread, sendRtn, length);
+
+    if (sendRtn < 0)
+    {
+      printf("[Thread %d] ", (int) tds[i].idThread);
+      perror ("sendQuestion: write() - 2 error sending to client.\n");
+    }
+  }
+  printf("Winner: %s\n", winnner.username);
 }

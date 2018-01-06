@@ -24,7 +24,7 @@
      </rect>
     </property>
     <property name="currentIndex">
-     <number>2</number>
+     <number>6</number>
     </property>
     <widget class="QWidget" name="welcome">
      <widget class="QWidget" name="layoutWidget">
@@ -150,8 +150,8 @@
      <widget class="QLabel" name="label_messageLogin">
       <property name="geometry">
        <rect>
-        <x>10</x>
-        <y>190</y>
+        <x>90</x>
+        <y>200</y>
         <width>501</width>
         <height>91</height>
        </rect>
@@ -166,7 +166,7 @@
      <widget class="QGroupBox" name="Register">
       <property name="geometry">
        <rect>
-        <x>190</x>
+        <x>180</x>
         <y>60</y>
         <width>248</width>
         <height>143</height>
@@ -229,11 +229,11 @@
        </item>
       </layout>
      </widget>
-     <widget class="QLabel" name="label_messageLogin_2">
+     <widget class="QLabel" name="label_messageRegister">
       <property name="geometry">
        <rect>
-        <x>0</x>
-        <y>190</y>
+        <x>90</x>
+        <y>200</y>
         <width>501</width>
         <height>91</height>
        </rect>
@@ -286,19 +286,6 @@
        <string>Check</string>
       </property>
      </widget>
-     <widget class="QLabel" name="label_questionTimer">
-      <property name="geometry">
-       <rect>
-        <x>30</x>
-        <y>240</y>
-        <width>131</width>
-        <height>31</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string/>
-      </property>
-     </widget>
      <widget class="QWidget" name="">
       <property name="geometry">
        <rect>
@@ -334,6 +321,32 @@
         <widget class="QRadioButton" name="radioButton_d">
          <property name="text">
           <string>Answer d</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="">
+      <property name="geometry">
+       <rect>
+        <x>30</x>
+        <y>250</y>
+        <width>207</width>
+        <height>21</height>
+       </rect>
+      </property>
+      <layout class="QHBoxLayout" name="horizontalLayout_3">
+       <item>
+        <widget class="QLabel" name="label_questionTimer">
+         <property name="text">
+          <string>00:00:00</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="label_questionText">
+         <property name="text">
+          <string>until next question</string>
          </property>
         </widget>
        </item>
@@ -381,7 +394,7 @@
       </layout>
      </widget>
     </widget>
-    <widget class="QWidget" name="page">
+    <widget class="QWidget" name="winner">
      <widget class="QLabel" name="label">
       <property name="geometry">
        <rect>
@@ -400,8 +413,8 @@
        <rect>
         <x>30</x>
         <y>70</y>
-        <width>261</width>
-        <height>21</height>
+        <width>211</width>
+        <height>41</height>
        </rect>
       </property>
       <layout class="QHBoxLayout" name="horizontalLayout_2">

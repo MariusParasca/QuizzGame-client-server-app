@@ -150,6 +150,7 @@ void QuizzGame::SendUsernamePassword(QString qusername, QString qpassword, QStri
 
 void QuizzGame::PrepareGame()
 {
+    ui->statusBar->showMessage(" ");
     ReadInt();
     GetQuestion();
     GetAnswers();
@@ -290,7 +291,7 @@ void QuizzGame::QuestionTimer()
 {
     questTimer = new QTimer(this);
     questTime  = new QTime;
-    questTime->setHMS(0, 0, 5);
+    questTime->setHMS(0, 0, 50);
     connect(questTimer, SIGNAL(timeout()), this, SLOT(questionTimerSlot()));
     questTimer->start(1000);
 }
@@ -328,6 +329,7 @@ void QuizzGame::nextQuestionTimerSlot()
     {
         nextQuestTimer->stop(); ui->label_nextQuestionTimer->setText(" ");
         ui->stackedWidget->setCurrentIndex(4);
+        SetRaddioButtonsToFalse();
         GetNextQuestion();
     }
 }
@@ -342,7 +344,7 @@ void QuizzGame::PrintWinner()
         exit(errno);
     }
     username[length] ='\0';
-
+    ui->statusBar->showMessage(" ");;
     ui->label_winner->setText(username);
 }
 
