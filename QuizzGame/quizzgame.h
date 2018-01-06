@@ -15,6 +15,8 @@
 #include <QTimer>
 #include <QTime>
 
+#define NUMBER_OF_CLIENTS 2
+
 namespace Ui {
 class QuizzGame;
 }
@@ -27,18 +29,18 @@ public:
     explicit QuizzGame(QWidget *parent = 0, int status = 0);
     void SetSocketDescriptor(int sd);
     void SendCode(int code);
-    void SendUsernamePassword(QString qusername, QString qpassword, QString title,
-                              QString succesfullyText, QString errorText);
+    int ReadInt();
+    void SendUsernamePassword(QString qusername, QString qpassword, QString succesfullyText, QString errorText);
     void GetQuestion();
     void GetAnswers();
     void GetAnswer(char subsection);
+    void GetNextQuestion();
     void SendAnswer(char* answer);
     void PrepareGame();
     void SetRaddioButtonsToFalse();
-    void questionTimer();
-    void nextQuestionTimer();
-    int readInt();
-    void GetNextQuestion();
+    void QuestionTimer();
+    void NextQuestionTimer();
+    void PrintWinner();
     void closeEvent (QCloseEvent *event);
     ~QuizzGame();
 

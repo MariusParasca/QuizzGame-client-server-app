@@ -18,13 +18,13 @@
     <property name="geometry">
      <rect>
       <x>0</x>
-      <y>0</y>
+      <y>-10</y>
       <width>601</width>
       <height>311</height>
      </rect>
     </property>
     <property name="currentIndex">
-     <number>4</number>
+     <number>2</number>
     </property>
     <widget class="QWidget" name="welcome">
      <widget class="QWidget" name="layoutWidget">
@@ -147,6 +147,20 @@
        </item>
       </layout>
      </widget>
+     <widget class="QLabel" name="label_messageLogin">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>190</y>
+        <width>501</width>
+        <height>91</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>If you are stuck in login, that means that the game started
+ and you need to wait until the game will finish</string>
+      </property>
+     </widget>
     </widget>
     <widget class="QWidget" name="register_2">
      <widget class="QGroupBox" name="Register">
@@ -214,6 +228,35 @@
         </widget>
        </item>
       </layout>
+     </widget>
+     <widget class="QLabel" name="label_messageLogin_2">
+      <property name="geometry">
+       <rect>
+        <x>0</x>
+        <y>190</y>
+        <width>501</width>
+        <height>91</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>If you are stuck in login, that means that the game started
+ and you need to wait until the game will finish</string>
+      </property>
+     </widget>
+    </widget>
+    <widget class="QWidget" name="pregame">
+     <widget class="QLabel" name="label_waitText">
+      <property name="geometry">
+       <rect>
+        <x>30</x>
+        <y>30</y>
+        <width>551</width>
+        <height>51</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Waiting for other players...</string>
+      </property>
      </widget>
     </widget>
     <widget class="QWidget" name="game">
@@ -332,6 +375,47 @@
         <widget class="QLabel" name="label_text">
          <property name="text">
           <string>until next question</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </widget>
+    <widget class="QWidget" name="page">
+     <widget class="QLabel" name="label">
+      <property name="geometry">
+       <rect>
+        <x>30</x>
+        <y>110</y>
+        <width>181</width>
+        <height>31</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Thank you for playing!</string>
+      </property>
+     </widget>
+     <widget class="QWidget" name="">
+      <property name="geometry">
+       <rect>
+        <x>30</x>
+        <y>70</y>
+        <width>261</width>
+        <height>21</height>
+       </rect>
+      </property>
+      <layout class="QHBoxLayout" name="horizontalLayout_2">
+       <item>
+        <widget class="QLabel" name="label_finishText3">
+         <property name="text">
+          <string>The winner is:</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="label_winner">
+         <property name="text">
+          <string>...</string>
          </property>
         </widget>
        </item>

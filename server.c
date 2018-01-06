@@ -22,6 +22,11 @@
 /* codul de eroare returnat de anumite apeluri */
 extern int errno;
 
+int tables[NR_TABLES];
+int indexGlobal;
+
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
 typedef struct thData{
   pthread_t idThread; //id-ul thread-ului tinut in evidenta de acest program contorizeaza
   int cl; //descriptorul intors de accept
@@ -49,6 +54,8 @@ struct answersAndSizes
 };
 
 int numberOfClients[NR_TABLES];
+int playersConnected;
+
 
 static void *treat(void *); /* functia executata de fiecare thread ce realizeaza comunicarea cu clientii */
 void respond(void *arg);
@@ -72,6 +79,8 @@ void answerFromClient(void *arg, unsigned char **answer);
 void sendAnswerCorrectness(void *arg, int questionID);
 int getNumberOfQuesitons();
 void runningTheGame(void *arg);
+void checkClientStateForWrite(pthread_t idThread, int sendRtn, int size);
+
 
 int main()
 {
@@ -83,7 +92,7 @@ int main()
   pthread_t th[100];    //Identificatorii thread-urilor care se vor crea
   int i=0;
 
-  addingQuestion();
+  //addingQuestion();
 
   /* crearea unui socket */
   if ((sd = socket (AF_INET, SOCK_STREAM, 0)) == -1)
@@ -121,12 +130,14 @@ int main()
     return errno;
   }
 
-  int tables[NR_TABLES] = {0};
-  /* servim in mod concurent clientii...folosind thread-uri */
+    /* servim in mod concurent clientii...folosind thread-uri */
+  int size = 3;
+  indexGlobal = 0;
+  thData *tds = malloc(3 * sizeof(struct thData));
+  //thData tds[4];
   while (1)
   {
     int client;
-    int index;
     pthread_t thread;
     thData * td; //parametru functia executata de thread     
     unsigned int length = sizeof (from);
@@ -136,8 +147,8 @@ int main()
 
     //client= malloc(sizeof(int));
     /* acceptam un client (stare blocanta pina la realizarea conexiunii)  */
-
-    /*for(i = 0; i < NR_TABLES; i++)
+  /*
+    for(i = 0; i < NR_TABLES; i++)
     {
       if(tables[i] < MAX_CLIENTS_PER_TABLE)
       {
@@ -147,7 +158,7 @@ int main()
     }
 
     
-    while(numberOfClients[index] < MAX_CLIENTS_PER_TABLE)
+    while(tables[index] < MAX_CLIENTS_PER_TABLE)
     {
       if ( (client = accept (sd, (struct sockaddr *) &from, &length)) < 0)
       {
@@ -158,23 +169,68 @@ int main()
       td=(struct thData*)malloc(sizeof(struct thData)); 
       td->cl=client;
       td->tableNumber = index;
-
+      //tables[index]++;
       ///////////////
-      pthread_create(&td->idThread, NULL, &treat, td);  
-      tables[index]++;
-    }*/
+      pthread_create(&td->idThread, NULL, &treat, td); 
+
+    }
+  
+    if(index == size)
+    {
+      tds = realloc(tds, 2 * size * sizeof(struct thData));
+      size = 2 * size;
+    }*/ 
 
     if ( (client = accept (sd, (struct sockaddr *) &from, &length)) < 0)
+    {
+      perror ("[server]Eroare la accept().\n");
+      continue;
+    }
+
+    //tds[index++] = *(struct thData*)malloc(sizeof(struct thData)); 
+    tds[indexGlobal].cl = client;
+
+    pthread_create(&tds[indexGlobal].idThread, NULL, &treat, &tds[indexGlobal]);  
+    indexGlobal++;
+    printf("[Inainte de if]Players connected: %d\n", playersConnected);
+    if(indexGlobal == MAX_CLIENTS_PER_TABLE)
+    {
+      printf("[in if]Players connected: %d\n", playersConnected);
+      thData winnner;
+      winnner.points = 0;
+      for(int i = 0; i < indexGlobal; i++)
       {
-        perror ("[server]Eroare la accept().\n");
-        continue;
+        pthread_join(tds[i].idThread, NULL);
+        if(tds[i].points >= winnner.points)
+          winnner = tds[i];
       }
+      for(int i = 0; i < indexGlobal; i++)
+      {
+        int length = strlen(winnner.username);
 
-    td=(struct thData*)malloc(sizeof(struct thData)); 
-      td->cl=client;
+        int sendRtn = send(tds[i].cl, &length, sizeof(length), MSG_NOSIGNAL);
+        checkClientStateForWrite(tds[i].idThread, sendRtn, sizeof(length));
 
-      pthread_create(&td->idThread, NULL, &treat, td);  
-         
+        if (sendRtn < 0)
+        {
+          printf("[Thread %d] ", (int) tds[i].idThread);
+          perror ("sendQuestion: write() - 1 error sending to client.\n");
+        }
+
+        sendRtn = send(tds[i].cl, winnner.username, length, MSG_NOSIGNAL);
+        checkClientStateForWrite(tds[i].idThread, sendRtn, length);
+
+        if (sendRtn < 0)
+        {
+          printf("[Thread %d] ", (int) tds[i].idThread);
+          perror ("sendQuestion: write() - 2 error sending to client.\n");
+        }
+      }
+      printf("[dupa trimitere castigatori]Players connected: %d\n", playersConnected);
+      printf("Winner: %s", winnner.username);
+      indexGlobal = 0;
+    }
+        
 
   }//while    
 };
@@ -182,9 +238,10 @@ int main()
 static void *treat(void *arg)
 {		
   thData *tdL = (struct thData*)arg;
+  
   printf ("[thread]- %d - connected\n", (int) tdL->idThread); ///////////
   fflush (stdout);		 
-  pthread_detach(pthread_self());		
+  //pthread_detach(pthread_self());		
   respond(arg);
   /* am terminat cu acest client, inchidem conexiunea */
   close ((intptr_t)arg);
@@ -195,6 +252,9 @@ void checkClientStateForRead(pthread_t idThread, int readRtn)
 {
   if (readRtn == 0)
   {
+    if(playersConnected > 0)
+      playersConnected--;
+    indexGlobal--;
     printf("[Thread %d] This client exited earlier!\n", (int) idThread);
     pthread_exit(0);
   }
@@ -204,19 +264,37 @@ void checkClientStateForWrite(pthread_t idThread, int sendRtn, int size)
 {
   if (sendRtn != size)
   {
+    if(playersConnected > 0)
+      playersConnected--;
+    indexGlobal--;
     printf("[Thread %d] This client exited earlier!\n", (int) idThread);
     pthread_exit(0);
   }
 }
+
+
+void checkForSufficentClients(void * arg)
+{
+  thData *tdL = (struct thData*)arg;
+  int sendRtn, ok = 0;
+  printf("[infunctie]Players connected: %d\n", playersConnected);
+ 
+  while(playersConnected != MAX_CLIENTS_PER_TABLE) ;
+
+  ok = 1;
+  sendRtn = send(tdL->cl, &ok, sizeof(ok), MSG_NOSIGNAL);
+  checkClientStateForWrite(tdL->idThread, sendRtn, sizeof(ok));
+}
+
 
 void respond(void *arg)
 {
   thData *tdL = (struct thData*)arg; 
   int code;
   int readRtn = read (tdL->cl, &code, sizeof(code));
-
+  //printf("Table: %d", tables[tdL->tableNumber]);
   checkClientStateForRead(tdL->idThread, readRtn);
-
+  //printf("Inainte de login: %d", tables[tdL->tableNumber]);
   if (readRtn < 0)
   {
     printf("[Thread %d]\n", (int) tdL->idThread);
@@ -232,7 +310,9 @@ void respond(void *arg)
     userRegister((struct thData*)arg);
   }
 
-  runningTheGame((struct thData*)arg);
+  playersConnected++; 
+  checkForSufficentClients(arg);
+  runningTheGame(arg);
 }
 
 void closeDatabase(sqlite3* db) { sqlite3_close(db); }
@@ -751,7 +831,7 @@ void runningTheGame(void *arg)
   ok = 0;
   sendRtn = send(tdL->cl, &ok, sizeof(ok), MSG_NOSIGNAL);
   checkClientStateForWrite(tdL->idThread, sendRtn, sizeof(ok));
-
+  playersConnected--;
   if (sendRtn < 0)
   {
     printf("[Thread %d] ", (int) tdL->idThread);

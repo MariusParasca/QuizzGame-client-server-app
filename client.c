@@ -9,6 +9,31 @@
 #include <netdb.h>
 #include <string.h>
 
+
+    /*int ok = 0;
+
+    while(!ok)
+    {
+        ok = ReadInt();
+        if (write (sd, &ok, sizeof(ok)) <= 0)
+        {
+            perror ("[client]write() to server error.\n");
+            exit(errno);
+        }
+    }
+    */
+
+
+ /*{
+    sendRtn = send(tdL->cl, &ok, sizeof(ok), MSG_NOSIGNAL);
+    checkClientStateForWrite(tdL->idThread, sendRtn, sizeof(ok));
+    sleep(5);
+    int readRtn = read (tdL->cl, &ok, sizeof(ok));
+    checkClientStateForRead(tdL->idThread, readRtn);
+  }
+*/
+
+
 /* codul de eroare returnat de anumite apeluri */
 extern int errno;
 //server addead points to client

@@ -7,7 +7,6 @@ QuizzGame::QuizzGame(QWidget *parent, int status) : QMainWindow(parent), ui(new 
 {
     ui->setupUi(this);
 
-
     if(status)
         ui->label_status->setText("Server online");
     else
@@ -29,6 +28,17 @@ void QuizzGame::SendCode(int code)
     }
 }
 
+int QuizzGame::ReadInt()
+{
+    int argument;
+    if (read (sd, &argument, sizeof(argument)) < 0)
+    {
+        perror ("[client]read() error from server.\n");
+        exit(errno);
+    }
+    return argument;
+}
+
 void QuizzGame::on_pushButton_singIn_clicked()
 {
     SendCode(1);
@@ -41,8 +51,69 @@ void QuizzGame::on_pushButton_registerWellcome_clicked()
     ui->stackedWidget->setCurrentIndex(2);
 }
 
-void QuizzGame::SendUsernamePassword(QString qusername, QString qpassword, QString title,
-                                     QString succesfullyText, QString errorText)
+void QuizzGame::on_pushButton_login_clicked()
+{
+    QString qusername = ui->lineEdit_username_login->text();
+    QString qpassword = ui->lineEdit_password_login->text();
+    SendUsernamePassword(qusername, qpassword, "Log in succesfully",
+                         "Username or password incorrect. Try again!");
+}
+
+void QuizzGame::on_pushButton_register_clicked()
+{
+    QString qusername = ui->lineEdit_username_register->text();
+    QString qpassword = ui->lineEdit_password_register->text();
+    SendUsernamePassword(qusername, qpassword, "Register succesfully",
+                         "Username already taken. Try again!");
+}
+
+void QuizzGame::on_pushButton_check_clicked()
+{
+    int error = 0;
+
+    if(ui->radioButton_a->isChecked())
+    {
+        SendAnswer(answerA);
+    }
+    else if(ui->radioButton_b->isChecked())
+    {
+        SendAnswer(answerB);
+    }
+    else if(ui->radioButton_c->isChecked())
+    {
+        SendAnswer(answerC);
+    }
+    else if(ui->radioButton_d->isChecked())
+    {
+        SendAnswer(answerD);
+    }
+    else
+    {
+        ui->statusBar->showMessage("No button checked! Try again!", 3000);
+        error = 1;
+    }
+    if(!error)
+    {
+        int ok = ReadInt();
+
+        if(ok)
+            ui->statusBar->showMessage("Correct answer!", 3000);
+        else
+            ui->statusBar->showMessage("Wrong answer!", 3000);
+        questTimer->stop(); ui->label_questionTimer->setText(" ");
+        ui->stackedWidget->setCurrentIndex(5);
+        NextQuestionTimer();
+    }
+}
+
+void QuizzGame::on_pushButton_nextQuestion_clicked()
+{
+    nextQuestTimer->stop(); ui->label_nextQuestionTimer->setText(" ");
+    SetRaddioButtonsToFalse();
+    GetNextQuestion();
+}
+
+void QuizzGame::SendUsernamePassword(QString qusername, QString qpassword, QString succesfullyText, QString errorText)
 {
     QByteArray toChar = qusername.toLatin1();
     char username[64];
@@ -63,47 +134,32 @@ void QuizzGame::SendUsernamePassword(QString qusername, QString qpassword, QStri
         exit(errno);
     }
 
-    int ok = readInt();
+    int ok = ReadInt();
 
     if(ok)
     {
-        QMessageBox::information(this, title , succesfullyText);
+        ui->stackedWidget->setCurrentIndex(3);
+        ui->statusBar->showMessage(succesfullyText, 3000);
         PrepareGame();
     }
     else
     {
-        QMessageBox::warning(this, title, errorText);
+        ui->statusBar->showMessage(errorText);
     }
 }
 
-int QuizzGame::readInt()
+void QuizzGame::PrepareGame()
 {
-    int argument;
-    if (read (sd, &argument, sizeof(argument)) < 0)
-    {
-        perror ("[client]read() error from server.\n");
-        exit(errno);
-    }
-    return argument;
-}
-
-void QuizzGame::GetNextQuestion()
-{
-    int ok = readInt();
-    if(ok)
-    {
-        GetQuestion();
-        GetAnswers();
-        questionTimer();
-        ui->stackedWidget->setCurrentIndex(3);
-    }
-    else
-        ui->statusBar->showMessage("No more questions!");
+    ReadInt();
+    GetQuestion();
+    GetAnswers();
+    ui->stackedWidget->setCurrentIndex(4);
+    QuestionTimer();
 }
 
 void QuizzGame::GetQuestion()
 {
-    int length =readInt();
+    int length = ReadInt();
 
     char *question = (char *) malloc(length);
 
@@ -128,7 +184,7 @@ void QuizzGame::GetAnswers()
 
 void QuizzGame::GetAnswer(char subsection)
 {
-    int length = readInt();
+    int length = ReadInt();
     char *answer = (char *) malloc(length);
 
     if (read (sd, answer, length) < 0)
@@ -184,22 +240,22 @@ void QuizzGame::SendAnswer(char* answer)
     }
 }
 
-
-void QuizzGame::on_pushButton_login_clicked()
+void QuizzGame::GetNextQuestion()
 {
-    QString qusername = ui->lineEdit_username_login->text();
-    QString qpassword = ui->lineEdit_password_login->text();
-    SendUsernamePassword(qusername, qpassword, "Log in", "Log in succesfully",
-                         "Username or password incorrect. Try again!");
-    questionTimer();
-}
-
-void QuizzGame::on_pushButton_register_clicked()
-{
-    QString qusername = ui->lineEdit_username_register->text();
-    QString qpassword = ui->lineEdit_password_register->text();
-    SendUsernamePassword(qusername, qpassword, "Register", "Register succesfully",
-                         "Username already taken. Try again!");
+    int ok = ReadInt();
+    if(ok)
+    {
+        GetQuestion();
+        GetAnswers();
+        QuestionTimer();
+        ui->stackedWidget->setCurrentIndex(4);
+    }
+    else
+    {
+        ui->statusBar->showMessage("No more questions, please wait for other players...");
+        ui->stackedWidget->setCurrentIndex(6);
+        PrintWinner();
+    }
 }
 
 void QuizzGame::SetRaddioButtonsToFalse()
@@ -230,7 +286,7 @@ void QuizzGame::SetRaddioButtonsToFalse()
     }
 }
 
-void QuizzGame::questionTimer()
+void QuizzGame::QuestionTimer()
 {
     questTimer = new QTimer(this);
     questTime  = new QTime;
@@ -239,7 +295,7 @@ void QuizzGame::questionTimer()
     questTimer->start(1000);
 }
 
-void QuizzGame::nextQuestionTimer()
+void QuizzGame::NextQuestionTimer()
 {
     nextQuestTimer = new QTimer(this);
     nextQuestTime = new QTime;
@@ -247,7 +303,6 @@ void QuizzGame::nextQuestionTimer()
     connect(nextQuestTimer, SIGNAL(timeout()), this, SLOT(nextQuestionTimerSlot()));
     nextQuestTimer->start(1000);
 }
-
 
 void QuizzGame::questionTimerSlot()
 {
@@ -258,10 +313,10 @@ void QuizzGame::questionTimerSlot()
         questTimer->stop(); ui->label_questionTimer->setText(" ");
         char answer[] = " ";
         SendAnswer(answer);
-        readInt();
+        ReadInt();
         ui->statusBar->showMessage("Time passed...", 3000);
-        nextQuestionTimer();
-        ui->stackedWidget->setCurrentIndex(4);
+        NextQuestionTimer();
+        ui->stackedWidget->setCurrentIndex(5);
     }
 }
 
@@ -272,56 +327,23 @@ void QuizzGame::nextQuestionTimerSlot()
     if(nextQuestTime->second() == 0)
     {
         nextQuestTimer->stop(); ui->label_nextQuestionTimer->setText(" ");
-        GetNextQuestion();
-        ui->stackedWidget->setCurrentIndex(3);
-    }
-}
-
-
-void QuizzGame::on_pushButton_check_clicked()
-{
-    int error = 0;
-
-    if(ui->radioButton_a->isChecked())
-    {
-        SendAnswer(answerA);
-    }
-    else if(ui->radioButton_b->isChecked())
-    {
-        SendAnswer(answerB);
-    }
-    else if(ui->radioButton_c->isChecked())
-    {
-        SendAnswer(answerC);
-    }
-    else if(ui->radioButton_d->isChecked())
-    {
-        SendAnswer(answerD);
-    }
-    else
-    {
-        ui->statusBar->showMessage("No button checked! Try again!", 3000);
-        error = 1;
-    }
-    if(!error)
-    {
-        int ok = readInt();
-
-        if(ok)
-            ui->statusBar->showMessage("Correct answer!", 3000);
-        else
-            ui->statusBar->showMessage("Wrong answer!", 3000);
-        questTimer->stop(); ui->label_questionTimer->setText(" ");
         ui->stackedWidget->setCurrentIndex(4);
-        nextQuestionTimer();
+        GetNextQuestion();
     }
 }
 
-void QuizzGame::PrepareGame()
+void QuizzGame::PrintWinner()
 {
-    GetQuestion();
-    GetAnswers();
-    ui->stackedWidget->setCurrentIndex(3);
+    int length = ReadInt();
+    char *username = (char *) malloc(length);
+    if (read (sd, username, length) < 0)
+    {
+        perror ("[client]read() error from server.\n");
+        exit(errno);
+    }
+    username[length] ='\0';
+
+    ui->label_winner->setText(username);
 }
 
 void QuizzGame::closeEvent (QCloseEvent *event)
@@ -339,12 +361,3 @@ void QuizzGame::closeEvent (QCloseEvent *event)
         event->accept();
     }
 }
-
-
-void QuizzGame::on_pushButton_nextQuestion_clicked()
-{
-    nextQuestTimer->stop(); ui->label_nextQuestionTimer->setText(" ");
-    SetRaddioButtonsToFalse();
-    GetNextQuestion();
-}
-
